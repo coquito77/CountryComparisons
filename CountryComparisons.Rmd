@@ -1,0 +1,176 @@
+---
+title: "Country Comparisions"
+author: "Moises Evangelista"
+date: "Prepared `r format(Sys.time(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    toc: true
+    toc_depth: 2
+subtitle: Report Validation
+fontsize: 11pt
+header-includes:
+- \usepackage{palatino}
+- \renewcommand{\familydefault}{\sfdefault}
+- \fontfamily{ppl}\selectfont
+
+- \usepackage{xcolor}
+- \usepackage[normalem]{ulem}
+- \hypersetup{colorlinks,urlcolor=blue, linkcolor=black}
+- \usepackage{float}
+- \PassOptionsToPackage{obeyspaces}{url}
+- \usepackage{graphicx, array, blindtext, longtable, tikz}
+- \usepackage[export]{adjustbox}
+
+---
+
+
+\makeatletter 
+\begingroup \lccode`+=32 \lowercase
+ {\endgroup \def\Url@ObeySp{\Url@Edit\Url@String{ }{+}}}
+ \def\Url@space{\penalty\Url@sppen\ }
+\makeatother
+
+
+in this analysis I'm using some of the code found here https://nowosad.github.io/post/maps-distortion/. In addition to viewing each county by the actual area size, I want to view them by the size based on their global GDP and population
+
+```{r setup, include=FALSE}
+
+
+# the latex code above is to keep spaces in file paths
+knitr::opts_chunk$set(cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE,
+                      #dpi = 500
+                      dev = "cairo_pdf")
+rm(list = ls()) #start with empty workspace
+# setwd("~/GitHub/MullerReportAnalysis") # set the working directory
+# list.files()
+library(tidyverse)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rvest)
+library(data.table)
+library(sf)
+library(cartogram)
+library(gganimate)
+
+# library(RSelenium)
+library(XML)
+options(scipen = 999)
+
+```
+
+```{r getGDPAndPopData}
+
+
+gdp <- read_html(httr::GET("https://en.wikipedia.org/wiki/List_of_countries_by_GDP_(nominal)", httr::user_agent("myagent"))) %>%
+  html_table(fill = TRUE, header = NA)
+
+gdpCombo <- gdp %>% 
+  .[[3]] %>% 
+  mutate(type = "IMF_2018") %>% 
+  bind_rows(gdp %>% 
+              .[[4]] %>% 
+              mutate(type = "WoldBank_2017") #%>% View("test") 
+  ) %>% 
+  bind_rows(gdp %>% 
+              .[[5]] %>% 
+              mutate(type = "UnitedNations_2017"))
+
+
+
+world_orig  <- ne_countries(scale = "medium", returnclass = "sf") %>% 
+  filter(scalerank == 1 ) %>% 
+  arrange(desc(gdp_md_est)) %>% 
+  slice(1:20) %>% 
+  select(sovereignt, admin, gdp_md_est, pop_est, geometry)
+
+class(world_orig )
+
+world_poly = world_orig  %>% 
+  st_cast("POLYGON")
+
+world = world_poly %>% 
+  st_transform(crs = 3857)
+
+world_areas = world %>% 
+  st_transform(crs = "+proj=moll") %>% 
+  st_area() %>% as.vector()
+
+map_areas = world %>% 
+  st_set_crs(NA) %>% 
+  st_area()
+
+world_scaled = world %>% 
+  mutate(scale = 1 / (sqrt(map_areas / world_areas))) %>% 
+  mutate(scale = as.numeric(scale / max(scale)))
+
+summary(world_scaled$scale)
+
+1 / min(world_scaled$scale)
+
+scaler = function(x, y, z) {
+  (x - z) * y + z
+}
+
+world_geom = st_geometry(world) 
+world_center = st_centroid(world_geom)
+
+
+world_transf = pmap(list(world_geom, world_scaled$scale, world_center), scaler) %>% 
+  st_sfc(crs = st_crs(world)) %>% 
+  st_sf()
+
+plot(world$geometry)
+plot(world_transf$geometry)
+
+world$state = 1
+world_transf$state = 2
+worlds = data.table::rbindlist(world, world_transf,  use.names= TRUE,  fill= TRUE)
+
+
+worlds_anim = ggplot() +
+  geom_sf(data = worlds, fill = "grey50") +
+  transition_states(state, transition_length = 5, state_length = 2) + 
+  ease_aes("cubic-in-out")
+
+
+
+
+
+map_SupDist %>% 
+  left_join(cntsByDist) %>% 
+  cartogram_cont( "n") %>% 
+  mutate(
+    format_n = scales::comma(n),
+    label = scales::comma(n)) %>% 
+  ggplot() +
+  geom_sf(aes(fill = label)
+          
+          
+          #,fill = NA
+          ,alpha = .5
+          ,size = .1
+  ) +
+  scale_fill_brewer(name = "Persons with address\ncoordinates in Sup. District"
+                    #,labels = paste(n,"/",  var)
+                    , type = "seq"
+                    , palette = "Dark2"
+                    , direction = 1,
+                    aesthetics = "fill") +
+  theme_minimal() +
+  labs(title = "L.A. County Cartogram of DPSS participants",
+       subtitle = "Unique persons, excludes IHSS programs"
+       ,x = "", y = "") +
+  theme(axis.text.y = element_blank()
+        ,axis.text.x = element_blank()
+        ,axis.title.y = element_blank()
+        ,axis.title.x = element_blank()
+        ,legend.position = "top"
+        ,legend.key.width = unit(2, "cm")
+        ,legend.title = element_text(vjust = 1)
+        , panel.background = element_rect(fill = "aliceblue"))
+
+
+
+```
