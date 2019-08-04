@@ -75,9 +75,16 @@ gdpCombo <- gdp %>%
   ) %>% 
   bind_rows(gdp %>% 
               .[[5]] %>% 
-              mutate(type = "UnitedNations_2017"))
+              mutate(type = "UnitedNations_2017")) %>% 
+  mutate(gdp_USMill = as.numeric(gsub(",","", `GDP(US$million)` )),
+         sovereignt = gsub("\\s*\\[.*\\]","",  `Country/Territory`),#    gsub("?[a-z]{1}/.*", "",),
+         sovereignt = trimws(sovereignt),
+         sovereignt = case_when(sovereignt==  "United States" ~  "United States of America",
+                                sovereignt ==  "Korea, South" ~  "South Korea",
+                                TRUE ~ sovereignt )
+  ) 
 
-
+rm(gdp)
 
 world_orig  <- ne_countries(scale = "medium", returnclass = "sf") %>% 
   filter(scalerank == 1 ) %>% 
@@ -88,7 +95,8 @@ world_orig  <- ne_countries(scale = "medium", returnclass = "sf") %>%
 class(world_orig )
 
 world_poly = world_orig  %>% 
-  st_cast("POLYGON")
+  st_cast("POLYGON") %>% 
+  rmapshaper::ms_filter_islands(.)
 
 world = world_poly %>% 
   st_transform(crs = 3857)
@@ -113,7 +121,8 @@ scaler = function(x, y, z) {
   (x - z) * y + z
 }
 
-world_geom = st_geometry(world) 
+world_geom = st_geometry(world)
+
 world_center = st_centroid(world_geom)
 
 
@@ -121,56 +130,83 @@ world_transf = pmap(list(world_geom, world_scaled$scale, world_center), scaler) 
   st_sfc(crs = st_crs(world)) %>% 
   st_sf()
 
+
 plot(world$geometry)
 plot(world_transf$geometry)
 
-world$state = 1
-world_transf$state = 2
-worlds = data.table::rbindlist(world, world_transf,  use.names= TRUE,  fill= TRUE)
+# world$state = 1
+# world_transf$state = 2
+
+worlds = rbind(world %>% 
+                 select(state, sovereignt)
+               , world_transf %>% 
+                 mutate(sovereignt = world$sovereignt))
+
+countries <- worlds$sovereignt %>% unique()
+
+plot_list = list()
+
+for (i in seq_along(countries)) {
+  p = world_transf %>% 
+    mutate(sovereignt = world$sovereignt,
+           state = "2") %>% 
+    filter( sovereignt == countries[i]) %>% 
+    # left_join(gdpCombo %>% 
+    #             filter(type == "IMF_2018" )) %>% # View("test")
+    # # cartogram_cont( "gdp_USMill", itermax = 5) %>% 
+    #    format_n = scales::comma(gdp_USMill),
+    #    label = scales::comma(gdp_USMill)) %>% 
+    ggplot() +
+    geom_sf(aes(fill = state)
+            #,fill = NA
+            ,alpha = .5
+            ,size = .1
+    ) +
+    geom_sf(data = world %>% 
+              select(state, sovereignt) %>% 
+              filter( sovereignt == countries[i]) %>% 
+              mutate(state = "1"),
+            aes(fill = state)
+            #,fill = NA
+            ,alpha = .5
+            ,size = .1
+    ) +
+    scale_fill_brewer(name = "Map Projections"
+                      ,labels = c("Distortion","Real")
+                      , type = "seq"
+                      , palette = "Dark2"
+                      , direction = 1,
+                      aesthetics = "fill") +
+    theme_minimal() +
+    labs(title = countries[i]) +
+    theme(legend.position="top")
+  
+  plot_list[[i]] = p
+}
+
+Cairo::CairoPDF(file = "./countriesProjections.pdf",
+                #units = "in", dpi = 150,
+                width = 12, 
+                height = 12, 
+                pointsize = 25)
+for (i in seq_along(countries)) {
+  print(plot_list[[i]])
+}
+dev.off()
 
 
-worlds_anim = ggplot() +
-  geom_sf(data = worlds, fill = "grey50") +
-  transition_states(state, transition_length = 5, state_length = 2) + 
-  ease_aes("cubic-in-out")
+plot(world %>% 
+       select(state, sovereignt) %>% 
+       filter( sovereignt == "United States of America") %>% .$geometry
+    # , col = sf.colors(12, categorical = TRUE)
+    , border = 'grey', 
+     ,axes = TRUE)
 
-
-
-
-
-map_SupDist %>% 
-  left_join(cntsByDist) %>% 
-  cartogram_cont( "n") %>% 
-  mutate(
-    format_n = scales::comma(n),
-    label = scales::comma(n)) %>% 
-  ggplot() +
-  geom_sf(aes(fill = label)
-          
-          
-          #,fill = NA
-          ,alpha = .5
-          ,size = .1
-  ) +
-  scale_fill_brewer(name = "Persons with address\ncoordinates in Sup. District"
-                    #,labels = paste(n,"/",  var)
-                    , type = "seq"
-                    , palette = "Dark2"
-                    , direction = 1,
-                    aesthetics = "fill") +
-  theme_minimal() +
-  labs(title = "L.A. County Cartogram of DPSS participants",
-       subtitle = "Unique persons, excludes IHSS programs"
-       ,x = "", y = "") +
-  theme(axis.text.y = element_blank()
-        ,axis.text.x = element_blank()
-        ,axis.title.y = element_blank()
-        ,axis.title.x = element_blank()
-        ,legend.position = "top"
-        ,legend.key.width = unit(2, "cm")
-        ,legend.title = element_text(vjust = 1)
-        , panel.background = element_rect(fill = "aliceblue"))
-
-
+plot(world_transf %>% 
+                 mutate(sovereignt = world$sovereignt) %>% 
+       filter( sovereignt == "United States of America") %>% .$geometry
+     , pch = 3, border = 'red'
+   , add = TRUE
+     )
 
 ```
