@@ -1,0 +1,15 @@
+# git ignore lines
+.Rproj.user
+.Rhistory
+*.RData*
+*.Rproj*
+.Ruserdata
+*.tex*
+# Excel temporary
+*.xls*
+*.xlsx*
+# PDF files
+#*.pdf*
+# Word doc files
+*.doc*
+*.docx*
