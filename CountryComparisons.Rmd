@@ -134,8 +134,8 @@ world_transf = pmap(list(world_geom, world_scaled$scale, world_center), scaler) 
 plot(world$geometry)
 plot(world_transf$geometry)
 
-# world$state = 1
-# world_transf$state = 2
+world$state = 1
+world_transf$state = 2
 
 worlds = rbind(world %>% 
                  select(state, sovereignt)
@@ -189,9 +189,55 @@ Cairo::CairoPDF(file = "./countriesProjections.pdf",
                 width = 12, 
                 height = 12, 
                 pointsize = 25)
+
 for (i in seq_along(countries)) {
   print(plot_list[[i]])
 }
+
+world_scaled  %>%
+  mutate(sovereignt = world$sovereignt) %>%
+  rmapshaper::ms_dissolve("sovereignt") %>%
+  mutate(gdp_md_est = world_orig$gdp_md_est) %>%
+  cartogram_cont(., weight = "gdp_md_est") %>%
+  mutate(
+    format_n = scales::comma(gdp_md_est),
+    label = scales::comma(gdp_md_est)) %>%
+  ggplot() +
+  geom_sf(aes(fill = label)
+          #,fill = NA
+          ,alpha = .5
+          ,size = .1
+  ) +
+  geom_sf(data = world_orig,
+          #aes(fill = label)
+          color = "blue"
+          ,fill = NA
+          ,alpha = .5
+          ,size = .1
+  )
+
+world_scaled  %>%
+  mutate(sovereignt = world$sovereignt) %>%
+  rmapshaper::ms_dissolve("sovereignt") %>%
+  mutate(pop_est = world_orig$pop_est) %>%
+  cartogram_cont(., weight = "pop_est") %>%
+  mutate(
+    format_n = scales::comma(pop_est),
+    label = scales::comma(pop_est)) %>%
+  ggplot() +
+  geom_sf(aes(fill = label)
+          #,fill = NA
+          ,alpha = .5
+          ,size = .1
+  ) +
+  geom_sf(data = world_orig,
+          #aes(fill = label)
+          color = "blue"
+          ,fill = NA
+          ,alpha = .5
+          ,size = .1
+  )
+
 dev.off()
 
 
