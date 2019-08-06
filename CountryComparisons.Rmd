@@ -214,7 +214,8 @@ world_scaled  %>%
           ,fill = NA
           ,alpha = .5
           ,size = .1
-  )
+  ) +
+  theme_minimal()
 
 world_scaled  %>%
   mutate(sovereignt = world$sovereignt) %>%
@@ -236,7 +237,8 @@ world_scaled  %>%
           ,fill = NA
           ,alpha = .5
           ,size = .1
-  )
+  ) +
+  theme_minimal() 
 
 dev.off()
 
