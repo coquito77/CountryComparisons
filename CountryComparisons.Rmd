@@ -184,6 +184,80 @@ for (i in seq_along(countries)) {
   plot_list[[i]] = p
 }
 
+
+
+# by population
+
+popWeights <- world_orig %>% 
+  select(sovereignt, pop_est) %>% st_drop_geometry %>%
+  mutate(totalSetPop = sum(pop_est),
+         pcntSetPop = (pop_est/totalSetPop)*100
+  ) %>%
+  select(sovereignt, pcntSetPop)
+
+
+world_scaled = world %>%
+  mutate(scale = 1 / (sqrt(map_areas / world_areas))) %>%
+  mutate(scale = as.numeric(scale / max(scale))) %>%
+  left_join(popWeights) %>%
+  mutate(origScale = scale,
+         scale = scale * pcntSetPop)
+
+summary(world_scaled$scale)
+
+1 / min(world_scaled$scale)
+
+scaler = function(x, y, z) {
+  (x - z) * y + z
+}
+
+world_geom = st_geometry(world)
+
+world_center = st_centroid(world_geom)
+
+world_transf_pop = pmap(list(world_geom, 
+                             world_scaled$scale, world_center), scaler) %>%
+  st_sfc(crs = st_crs(world)) %>%
+  st_sf()
+
+plot(world_transf_pop$geometry)
+
+RColorBrewer::display.brewer.all()
+
+# by gdp
+
+gdpWeights <- world_orig %>%
+  select(sovereignt, gdp_md_est) %>% st_drop_geometry %>%
+  mutate(totalSetGDP = sum(gdp_md_est),
+         pcntSeGDP = (gdp_md_est/totalSetGDP)*100
+  ) %>%
+  select(sovereignt, pcntSeGDP)
+
+world_scaled = world %>%
+  mutate(scale = 1 / (sqrt(map_areas / world_areas))) %>%
+  mutate(scale = as.numeric(scale / max(scale))) %>%
+  left_join(gdpWeights) %>%
+  mutate(origScale = scale,
+         scale = scale * pcntSeGDP)
+
+
+summary(world_scaled$scale)
+
+1 / min(world_scaled$scale)
+
+scaler = function(x, y, z) {
+  (x - z) * y + z
+  
+}
+world_geom = st_geometry(world)
+world_center = st_centroid(world_geom)
+world_transf_gdp = pmap(list(world_geom, world_scaled$scale, world_center), scaler) %>%
+  st_sfc(crs = st_crs(world)) %>%
+  st_sf()
+
+
+plot(world_transf_gdp$geometry)
+
 Cairo::CairoPDF(file = "./countriesProjections.pdf",
                 #units = "in", dpi = 150,
                 width = 12, 
@@ -194,51 +268,26 @@ for (i in seq_along(countries)) {
   print(plot_list[[i]])
 }
 
-world_scaled  %>%
+world_transf_pop  %>%
   mutate(sovereignt = world$sovereignt) %>%
-  rmapshaper::ms_dissolve("sovereignt") %>%
-  mutate(gdp_md_est = world_orig$gdp_md_est) %>%
-  cartogram_cont(., weight = "gdp_md_est") %>%
-  mutate(
-    format_n = scales::comma(gdp_md_est),
-    label = scales::comma(gdp_md_est)) %>%
   ggplot() +
-  geom_sf(aes(fill = label)
-          #,fill = NA
+  geom_sf(aes(fill = sovereignt)
           ,alpha = .5
           ,size = .1
   ) +
-  geom_sf(data = world_orig,
-          #aes(fill = label)
-          color = "blue"
-          ,fill = NA
+  theme_minimal() # +
+  # scale_fill_brewer( type = "seq", palette = 1, direction = 1,
+  # aesthetics = "fill")
+
+world_transf_gdp  %>%
+  mutate(sovereignt = world$sovereignt) %>%
+  ggplot() +
+  geom_sf(aes(fill = sovereignt)
+          #,fill = NA
           ,alpha = .5
           ,size = .1
   ) +
   theme_minimal()
-
-world_scaled  %>%
-  mutate(sovereignt = world$sovereignt) %>%
-  rmapshaper::ms_dissolve("sovereignt") %>%
-  mutate(pop_est = world_orig$pop_est) %>%
-  cartogram_cont(., weight = "pop_est") %>%
-  mutate(
-    format_n = scales::comma(pop_est),
-    label = scales::comma(pop_est)) %>%
-  ggplot() +
-  geom_sf(aes(fill = label)
-          #,fill = NA
-          ,alpha = .5
-          ,size = .1
-  ) +
-  geom_sf(data = world_orig,
-          #aes(fill = label)
-          color = "blue"
-          ,fill = NA
-          ,alpha = .5
-          ,size = .1
-  ) +
-  theme_minimal() 
 
 dev.off()
 
